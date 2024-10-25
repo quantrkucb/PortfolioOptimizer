@@ -1,6 +1,6 @@
-distutils
+
 numpy==1.25.1
-pandas==1.4.4
-yfinance==0.2.26
+pandas
+yfinance
 streamlit
 plotly
