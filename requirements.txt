@@ -1,5 +1,5 @@
 
-numpy==1.25.1
+numpy
 pandas
 yfinance
 streamlit
