@@ -1,15 +1,10 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from dateutil.relativedelta import relativedelta
 import streamlit as st
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
-
-
-def years_between_dates(sd, ed):
-    # Custom function to compute the difference in years between two dates
-    delta = ed - sd
-    return delta.days / 365.25
+from datetime import timedelta
 
 
 @st.cache_data
@@ -20,9 +15,10 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     sd = pd.Timestamp(sd)
     ed = pd.Timestamp(ed)
 
-    time_frame = years_between_dates(sd, ed)
-    if time_frame < 1:
+    if relativedelta(ed, sd).days > 0 and relativedelta(ed, sd).years < 1:
         time_frame = 1
+    else:
+        time_frame = relativedelta(ed, sd).years
 
     # Choose stocks
     data = yf.download(stocks_, start=sd, end=ed)
@@ -30,7 +26,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
 
     # Data treatment
     ticker = '^TNX'
-    risk_free_data = yf.Ticker(ticker).history(period='10y')
+    risk_free_data = yf.Ticker(ticker).history(period=f'{time_frame}y')
     rf = risk_free_data['Close'].mean() / 100
 
     data = data['Adj Close']
@@ -42,11 +38,11 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
 
     stock_returns = data.pct_change().dropna()
     df_statistics = pd.DataFrame()
-    df_statistics['Return'] = (stock_returns + 1).prod() ** (252 / len(stock_returns)) - 1
+    df_statistics['Return'] = (stock_returns + 1).prod()**(252 / len(stock_returns)) - 1
     df_statistics['Std'] = stock_returns.std() * np.sqrt(252)
     mkt_returns = mkt_data['Adj Close'].pct_change().dropna()
     mkt_returns = mkt_returns.reindex(mkt_returns.index.intersection(stock_returns.index))
-    sp = (mkt_returns + 1).product() ** (252 / len(mkt_returns)) - 1
+    sp = (mkt_returns + 1).product()**(252 / len(mkt_returns)) - 1
 
     beta_ = {}
     for i in stock_returns:
@@ -77,7 +73,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     alpha = np.matmul(e_, h_.T)
     beta = np.matmul(e_, g_.T)
     gamma = np.matmul(r_, g_.T)
-    delta = alpha * gamma - beta ** 2
+    delta = alpha * gamma - beta**2
     MVP = h_ / alpha
     pf_return = beta / alpha
     pf_std = np.sqrt(1 / alpha)
@@ -95,14 +91,16 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     return MVP, pf_return, pf_std, optimal_pf, x, risk_, stock_cov
 
 
+
 def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.025):
     # Timeframe
     sd = pd.Timestamp(sd)
     ed = pd.Timestamp(ed)
 
-    time_frame = years_between_dates(sd, ed)
-    if time_frame < 1:
+    if relativedelta(ed, sd).days > 0 and relativedelta(ed, sd).years < 1:
         time_frame = 1
+    else:
+        time_frame = relativedelta(ed, sd).years
 
     # Market Cap Calculation
     caps = {}
@@ -110,12 +108,12 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
         ticker = yf.Ticker(i)
         all_dates = ticker.quarterly_income_stmt.columns
         total_shares = ticker.quarterly_income_stmt[all_dates[0]]['Basic Average Shares']
-        stock_price = ticker.history(start=all_dates[0] - timedelta(days=2), end=all_dates[0])['Close']
+        stock_price = ticker.history(start=all_dates[0]-timedelta(2, 0, 0), end=all_dates[0])['Close']
         market_cap = stock_price * total_shares
-        caps[i] = market_cap.values[0]
+        caps[i] = (market_cap.values[0])
     market_caps = caps
     total_cap = sum(market_caps.values())
-
+    
     # Calculate Market Capitalization Weights
     df = pd.DataFrame(market_caps.items(), columns=['Stock', 'Market Cap'])
     df['Cap Ratio'] = df['Market Cap'] / total_cap
@@ -128,7 +126,7 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
 
     # Risk-Free Rate
     ticker = '^TNX'
-    risk_free_data = yf.Ticker(ticker).history(period=f'{int(time_frame)}y')
+    risk_free_data = yf.Ticker(ticker).history(period=f'{time_frame}y')
     rf = risk_free_data['Close'].mean() / 100
 
     data = data['Adj Close']
@@ -159,11 +157,13 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
     return market_cap_weights, portfolio_return, portfolio_variance, weights
 
 
+
 def home():
     # Streamlit app layout
     st.title("Portfolio Optimizer")
 
     # Create two columns for buttons
+
     if 'asset_class' not in st.session_state:
         st.session_state.asset_class = 'Cash'  # Default value
 
@@ -174,7 +174,7 @@ def home():
     col1, col2 = st.columns(2)
 
     with col1:
-        # Check which button was clicked
+    # Check which button was clicked
         if st.button("Cash (Equities)"):
             select_asset_class('Cash')
     with col2:
@@ -197,44 +197,118 @@ def home():
     target_return = st.number_input("Target Annualised Return (%)", value=20.0, format="%.1f", step=0.1) / 100  # Convert to decimal
     # Convert input string into a list
     stocks_ = [stock.strip() for stock in stocks_input.split(",")]
-    mkt_ = [mkt_input.strip()]
+    mkt_ = [stock.strip() for stock in mkt_input.split(",")]
 
-    if st.button("Calculate Optimal Portfolio"):
-        try:
-            MVP, pf_return, pf_std, optimal_pf, x, risk_, stock_cov = calculate_optimal_portfolio(stocks_, mkt_, start_date, end_date, target_return)
-            st.success("Optimal Portfolio Calculated Successfully!")
-            st.write(f"Minimum Variance Portfolio: {MVP}")
-            st.write(f"Expected Portfolio Return: {pf_return}")
-            st.write(f"Portfolio Standard Deviation: {pf_std}")
+    # Calculate optimal portfolio and efficient frontier
+    MVP, pf_return, pf_std, optimal_pf, x, risk_, stock_cov = calculate_optimal_portfolio(stocks_, mkt_, start_date, end_date, target_return)
 
-            # Plot risk
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=x, y=list(risk_.values()), mode='lines', name='Risk'))
-            fig.update_layout(title='Risk vs Return', xaxis_title='Return', yaxis_title='Risk (Std Dev)', showlegend=True)
-            st.plotly_chart(fig)
+    # Calculate portfolio risk
+    portfolio_std_dev = np.sqrt(np.dot(optimal_pf.T, np.dot(stock_cov, optimal_pf)))
 
-        except AssertionError:
-            st.error("Data contains too many missing values. Please check the stock tickers or the date range.")
-        except Exception as e:
-            st.error(f"Error: {e}")
+    # Plot the efficient frontier
+    fig = go.Figure()
+
+    # Add the efficient frontier line
+    fig.add_trace(go.Scatter(x= list(risk_.values()), y=x, mode='lines', name='Efficient Frontier'))
+
+    # Add the optimal portfolio point
+    fig.add_trace(go.Scatter(x=[portfolio_std_dev], y=[target_return], mode='markers',  # Convert back to percentage for display
+                            marker=dict(color='red', size=12, symbol='star'),
+                            name='Target Portfolio'))
+
+    # Update layout
+    fig.update_layout(
+        title="Efficient Frontier",
+        xaxis_title="Risk (Standard Deviation) (%)",
+        yaxis_title="Return (%)",
+        # yaxis_tickformat='%',
+        yaxis_tickformat=".2%", 
+        xaxis_tickformat=".2%", 
+        showlegend=True
+    )
+
+    # Display the plot in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Create two columns for layout
+    col1, col2 = st.columns(2)
+
+    # Display Min Variance Portfolio in the first column
+    with col1:
+        st.write("Min Variance Portfolio:")
+        st.dataframe(pd.DataFrame(MVP, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
+        st.write(f"Portfolio Return: {'&nbsp;'*3} {'&nbsp;'*3} {round(pf_return * 100, 2)} %")  # Convert back to percentage for display
+        st.write(f"Portfolio Std Dev: {'&nbsp;'*3} {'&nbsp;'*3} {round(pf_std * 100, 2)} %")  # Convert back to percentage for display
+
+    # Display Target Return Portfolio Weights in the second column
+    with col2:
+        st.write("Target Return Portfolio Weights:")
+        st.dataframe(pd.DataFrame(optimal_pf, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
+        st.write(f"Portfolio Return: {'&nbsp;'*3} {'&nbsp;'*3} {round(target_return * 100, 2)} %")  # Convert back to percentage for display
+        st.write(f"Portfolio Std Dev: {'&nbsp;'*3} {'&nbsp;'*3} {round(np.sqrt(np.matmul(optimal_pf, np.matmul(stock_cov, optimal_pf.T))) * 100, 2)} %")  
+                # Convert back to percentage for display
+
+    if st.session_state.asset_class == 'Cash':
+        st.title("Black-Litterman")
+
+        st.header("Input Matrix P (Investor Views)")
+        # Input for Matrix P
+        rows = st.number_input("Number of views (rows in P)", min_value=1, value=2)
+        cols = len(MVP)
+
+        P_data = []
+        for i in range(rows):
+            row = st.text_input(f"Enter view {i+1} values (comma separated)", "")
+            if row:
+                P_data.append([float(x.strip()) for x in row.split(",")])
+
+        P_matrix = pd.DataFrame(P_data)
+
+        st.header("Input Vector Q (Expected Returns)")
+        Q_data = []
+        for i in range(rows):
+            q_value = st.number_input(f"Expected return for view {i+1}", value=0.0)
+            Q_data.append(q_value)
+
+        Q_vector = pd.Series(Q_data)
+
+        if st.button("Submit"):
+            if len(P_data) == rows and all(len(row) == cols for row in P_data):
+                # st.subheader("Matrix P")
+                # st.write(P_matrix)
+                # st.subheader("Vector Q")
+                # st.write(Q_vector)
+
+                # Optional: Display the result
+                st.success("Matrices successfully entered!")
+                market_cap_weights, pf_return, pf_std, optimal_pf = black_litterman(stocks_, mkt_, start_date, end_date, target_return, P_matrix, Q_vector)
+
+                # Calculate portfolio risk
+                portfolio_std_dev = np.sqrt(np.dot(optimal_pf.T, np.dot(stock_cov, optimal_pf)))
+
+                st.write("Optimal Weights:")
+                st.dataframe(pd.DataFrame(optimal_pf, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
+                st.write(f"Portfolio Return: {'&nbsp;'*3} {'&nbsp;'*3} {round(pf_return * 100, 2)} %")  # Convert back to percentage for display
+                st.write(f"Portfolio Std Dev: {'&nbsp;'*3} {'&nbsp;'*3} {round(portfolio_std_dev * 100, 2)} %")  # Convert back to percentage for display
+                # st.dataframe(pd.DataFrame(market_cap_weights, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
+
+            else:
+                st.error("Error: Please check the dimensions of Matrix P and the number of entries in Vector Q.")
 
 
-    # Black-Litterman Model
-    if st.button("Calculate Black-Litterman"):
-        # User inputs for Black-Litterman
-        P = [[1, -1, 0, 0], [0, 1, -1, 0]]  # View matrix
-        Q = [0.02, 0.01]  # View returns
-        try:
-            market_cap_weights, portfolio_return, portfolio_variance, weights = black_litterman(stocks_, mkt_, start_date, end_date, target_return, P, Q)
-            st.success("Black-Litterman Portfolio Calculated Successfully!")
-            st.write(f"Market Capitalization Weights: {market_cap_weights}")
-            st.write(f"Portfolio Return: {portfolio_return}")
-            st.write(f"Portfolio Variance: {portfolio_variance}")
-            st.write(f"Optimal Weights: {weights}")
-
-        except Exception as e:
-            st.error(f"Error: {e}")
+def page_one():
+    st.title("hi")
+def page_two():
+    st.title("Hi")
 
 
-if __name__ == "__main__":
+st.sidebar.title("Portfolio Construction and Management")
+page = st.sidebar.radio("Select a page:", ["Optimizer: MVO (+Black Litterman)", "Covariance Shrinkage (Ledoit and Wolf", "Page Two"])
+
+# Render the selected page
+if page == "Optimizer: MVO (+Black Litterman)":
     home()
+elif page == "Page One":
+    page_one()
+elif page == "Page Two":
+    page_two()
