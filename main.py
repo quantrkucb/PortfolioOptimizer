@@ -1,12 +1,3 @@
-# import numpy as np
-# import pandas as pd
-# import yfinance as yf
-# from dateutil.relativedelta import relativedelta
-# import streamlit as st
-# import plotly.graph_objects as go
-# from datetime import timedelta
-
-
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -168,14 +159,11 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
     return market_cap_weights, portfolio_return, portfolio_variance, weights
 
 
-
-
 def home():
     # Streamlit app layout
     st.title("Portfolio Optimizer")
 
     # Create two columns for buttons
-
     if 'asset_class' not in st.session_state:
         st.session_state.asset_class = 'Cash'  # Default value
 
@@ -186,7 +174,7 @@ def home():
     col1, col2 = st.columns(2)
 
     with col1:
-    # Check which button was clicked
+        # Check which button was clicked
         if st.button("Cash (Equities)"):
             select_asset_class('Cash')
     with col2:
@@ -209,118 +197,44 @@ def home():
     target_return = st.number_input("Target Annualised Return (%)", value=20.0, format="%.1f", step=0.1) / 100  # Convert to decimal
     # Convert input string into a list
     stocks_ = [stock.strip() for stock in stocks_input.split(",")]
-    mkt_ = [stock.strip() for stock in mkt_input.split(",")]
+    mkt_ = [mkt_input.strip()]
 
-    # Calculate optimal portfolio and efficient frontier
-    MVP, pf_return, pf_std, optimal_pf, x, risk_, stock_cov = calculate_optimal_portfolio(stocks_, mkt_, start_date, end_date, target_return)
+    if st.button("Calculate Optimal Portfolio"):
+        try:
+            MVP, pf_return, pf_std, optimal_pf, x, risk_, stock_cov = calculate_optimal_portfolio(stocks_, mkt_, start_date, end_date, target_return)
+            st.success("Optimal Portfolio Calculated Successfully!")
+            st.write(f"Minimum Variance Portfolio: {MVP}")
+            st.write(f"Expected Portfolio Return: {pf_return}")
+            st.write(f"Portfolio Standard Deviation: {pf_std}")
 
-    # Calculate portfolio risk
-    portfolio_std_dev = np.sqrt(np.dot(optimal_pf.T, np.dot(stock_cov, optimal_pf)))
+            # Plot risk
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x, y=list(risk_.values()), mode='lines', name='Risk'))
+            fig.update_layout(title='Risk vs Return', xaxis_title='Return', yaxis_title='Risk (Std Dev)', showlegend=True)
+            st.plotly_chart(fig)
 
-    # Plot the efficient frontier
-    fig = go.Figure()
-
-    # Add the efficient frontier line
-    fig.add_trace(go.Scatter(x= list(risk_.values()), y=x, mode='lines', name='Efficient Frontier'))
-
-    # Add the optimal portfolio point
-    fig.add_trace(go.Scatter(x=[portfolio_std_dev], y=[target_return], mode='markers',  # Convert back to percentage for display
-                            marker=dict(color='red', size=12, symbol='star'),
-                            name='Target Portfolio'))
-
-    # Update layout
-    fig.update_layout(
-        title="Efficient Frontier",
-        xaxis_title="Risk (Standard Deviation) (%)",
-        yaxis_title="Return (%)",
-        # yaxis_tickformat='%',
-        yaxis_tickformat=".2%", 
-        xaxis_tickformat=".2%", 
-        showlegend=True
-    )
-
-    # Display the plot in Streamlit
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Create two columns for layout
-    col1, col2 = st.columns(2)
-
-    # Display Min Variance Portfolio in the first column
-    with col1:
-        st.write("Min Variance Portfolio:")
-        st.dataframe(pd.DataFrame(MVP, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
-        st.write(f"Portfolio Return: {'&nbsp;'*3} {'&nbsp;'*3} {round(pf_return * 100, 2)} %")  # Convert back to percentage for display
-        st.write(f"Portfolio Std Dev: {'&nbsp;'*3} {'&nbsp;'*3} {round(pf_std * 100, 2)} %")  # Convert back to percentage for display
-
-    # Display Target Return Portfolio Weights in the second column
-    with col2:
-        st.write("Target Return Portfolio Weights:")
-        st.dataframe(pd.DataFrame(optimal_pf, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
-        st.write(f"Portfolio Return: {'&nbsp;'*3} {'&nbsp;'*3} {round(target_return * 100, 2)} %")  # Convert back to percentage for display
-        st.write(f"Portfolio Std Dev: {'&nbsp;'*3} {'&nbsp;'*3} {round(np.sqrt(np.matmul(optimal_pf, np.matmul(stock_cov, optimal_pf.T))) * 100, 2)} %")  
-                # Convert back to percentage for display
-
-    if st.session_state.asset_class == 'Cash':
-        st.title("Black-Litterman")
-
-        st.header("Input Matrix P (Investor Views)")
-        # Input for Matrix P
-        rows = st.number_input("Number of views (rows in P)", min_value=1, value=2)
-        cols = len(MVP)
-
-        P_data = []
-        for i in range(rows):
-            row = st.text_input(f"Enter view {i+1} values (comma separated)", "")
-            if row:
-                P_data.append([float(x.strip()) for x in row.split(",")])
-
-        P_matrix = pd.DataFrame(P_data)
-
-        st.header("Input Vector Q (Expected Returns)")
-        Q_data = []
-        for i in range(rows):
-            q_value = st.number_input(f"Expected return for view {i+1}", value=0.0)
-            Q_data.append(q_value)
-
-        Q_vector = pd.Series(Q_data)
-
-        if st.button("Submit"):
-            if len(P_data) == rows and all(len(row) == cols for row in P_data):
-                # st.subheader("Matrix P")
-                # st.write(P_matrix)
-                # st.subheader("Vector Q")
-                # st.write(Q_vector)
-
-                # Optional: Display the result
-                st.success("Matrices successfully entered!")
-                market_cap_weights, pf_return, pf_std, optimal_pf = black_litterman(stocks_, mkt_, start_date, end_date, target_return, P_matrix, Q_vector)
-
-                # Calculate portfolio risk
-                portfolio_std_dev = np.sqrt(np.dot(optimal_pf.T, np.dot(stock_cov, optimal_pf)))
-
-                st.write("Optimal Weights:")
-                st.dataframe(pd.DataFrame(optimal_pf, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
-                st.write(f"Portfolio Return: {'&nbsp;'*3} {'&nbsp;'*3} {round(pf_return * 100, 2)} %")  # Convert back to percentage for display
-                st.write(f"Portfolio Std Dev: {'&nbsp;'*3} {'&nbsp;'*3} {round(portfolio_std_dev * 100, 2)} %")  # Convert back to percentage for display
-                # st.dataframe(pd.DataFrame(market_cap_weights, index=stocks_, columns=["Weights"]), width=160)  # Adjust the width as needed
-
-            else:
-                st.error("Error: Please check the dimensions of Matrix P and the number of entries in Vector Q.")
+        except AssertionError:
+            st.error("Data contains too many missing values. Please check the stock tickers or the date range.")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 
-def page_one():
-    st.title("hi")
-def page_two():
-    st.title("Hi")
+    # Black-Litterman Model
+    if st.button("Calculate Black-Litterman"):
+        # User inputs for Black-Litterman
+        P = [[1, -1, 0, 0], [0, 1, -1, 0]]  # View matrix
+        Q = [0.02, 0.01]  # View returns
+        try:
+            market_cap_weights, portfolio_return, portfolio_variance, weights = black_litterman(stocks_, mkt_, start_date, end_date, target_return, P, Q)
+            st.success("Black-Litterman Portfolio Calculated Successfully!")
+            st.write(f"Market Capitalization Weights: {market_cap_weights}")
+            st.write(f"Portfolio Return: {portfolio_return}")
+            st.write(f"Portfolio Variance: {portfolio_variance}")
+            st.write(f"Optimal Weights: {weights}")
+
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 
-st.sidebar.title("Portfolio Construction and Management")
-page = st.sidebar.radio("Select a page:", ["Optimizer: MVO (+Black Litterman)", "Covariance Shrinkage (Ledoit and Wolf 2004)", "Page Two"])
-
-# Render the selected page
-if page == "Optimizer: MVO (+Black Litterman)":
+if __name__ == "__main__":
     home()
-elif page == "Page One":
-    page_one()
-elif page == "Page Two":
-    page_two()
