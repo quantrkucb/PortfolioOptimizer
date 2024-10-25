@@ -7,6 +7,20 @@ import plotly.graph_objects as go
 from datetime import timedelta
 
 
+import numpy as np
+import pandas as pd
+import yfinance as yf
+import streamlit as st
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+
+
+def years_between_dates(sd, ed):
+    # Custom function to compute the difference in years between two dates
+    delta = ed - sd
+    return delta.days / 365.25
+
+
 @st.cache_data
 def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     # Merton Matrix Model - Min Variance Portfolio
@@ -15,10 +29,9 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     sd = pd.Timestamp(sd)
     ed = pd.Timestamp(ed)
 
-    if relativedelta(ed, sd).days > 0 and relativedelta(ed, sd).years < 1:
+    time_frame = years_between_dates(sd, ed)
+    if time_frame < 1:
         time_frame = 1
-    else:
-        time_frame = relativedelta(ed, sd).years
 
     # Choose stocks
     data = yf.download(stocks_, start=sd, end=ed)
@@ -26,7 +39,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
 
     # Data treatment
     ticker = '^TNX'
-    risk_free_data = yf.Ticker(ticker).history(period=f'{time_frame}y')
+    risk_free_data = yf.Ticker(ticker).history(period=f'{int(time_frame)}y')
     rf = risk_free_data['Close'].mean() / 100
 
     data = data['Adj Close']
@@ -38,11 +51,11 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
 
     stock_returns = data.pct_change().dropna()
     df_statistics = pd.DataFrame()
-    df_statistics['Return'] = (stock_returns + 1).prod()**(252 / len(stock_returns)) - 1
+    df_statistics['Return'] = (stock_returns + 1).prod() ** (252 / len(stock_returns)) - 1
     df_statistics['Std'] = stock_returns.std() * np.sqrt(252)
     mkt_returns = mkt_data['Adj Close'].pct_change().dropna()
     mkt_returns = mkt_returns.reindex(mkt_returns.index.intersection(stock_returns.index))
-    sp = (mkt_returns + 1).product()**(252 / len(mkt_returns)) - 1
+    sp = (mkt_returns + 1).product() ** (252 / len(mkt_returns)) - 1
 
     beta_ = {}
     for i in stock_returns:
@@ -73,7 +86,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     alpha = np.matmul(e_, h_.T)
     beta = np.matmul(e_, g_.T)
     gamma = np.matmul(r_, g_.T)
-    delta = alpha * gamma - beta**2
+    delta = alpha * gamma - beta ** 2
     MVP = h_ / alpha
     pf_return = beta / alpha
     pf_std = np.sqrt(1 / alpha)
@@ -91,16 +104,14 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     return MVP, pf_return, pf_std, optimal_pf, x, risk_, stock_cov
 
 
-
 def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.025):
     # Timeframe
     sd = pd.Timestamp(sd)
     ed = pd.Timestamp(ed)
 
-    if relativedelta(ed, sd).days > 0 and relativedelta(ed, sd).years < 1:
+    time_frame = years_between_dates(sd, ed)
+    if time_frame < 1:
         time_frame = 1
-    else:
-        time_frame = relativedelta(ed, sd).years
 
     # Market Cap Calculation
     caps = {}
@@ -108,12 +119,12 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
         ticker = yf.Ticker(i)
         all_dates = ticker.quarterly_income_stmt.columns
         total_shares = ticker.quarterly_income_stmt[all_dates[0]]['Basic Average Shares']
-        stock_price = ticker.history(start=all_dates[0]-timedelta(2, 0, 0), end=all_dates[0])['Close']
+        stock_price = ticker.history(start=all_dates[0] - timedelta(days=2), end=all_dates[0])['Close']
         market_cap = stock_price * total_shares
-        caps[i] = (market_cap.values[0])
+        caps[i] = market_cap.values[0]
     market_caps = caps
     total_cap = sum(market_caps.values())
-    
+
     # Calculate Market Capitalization Weights
     df = pd.DataFrame(market_caps.items(), columns=['Stock', 'Market Cap'])
     df['Cap Ratio'] = df['Market Cap'] / total_cap
@@ -126,7 +137,7 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
 
     # Risk-Free Rate
     ticker = '^TNX'
-    risk_free_data = yf.Ticker(ticker).history(period=f'{time_frame}y')
+    risk_free_data = yf.Ticker(ticker).history(period=f'{int(time_frame)}y')
     rf = risk_free_data['Close'].mean() / 100
 
     data = data['Adj Close']
@@ -155,6 +166,7 @@ def black_litterman(stocks_, mkt_, sd, ed, target_return, P, Q, uncertainty=0.02
     portfolio_variance = np.dot(weights.T, np.dot(stock_cov, weights))
 
     return market_cap_weights, portfolio_return, portfolio_variance, weights
+
 
 
 
