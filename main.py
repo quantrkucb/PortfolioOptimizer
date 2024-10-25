@@ -39,7 +39,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
 
     # Data treatment
     ticker = '^TNX'
-    risk_free_data = yf.Ticker(ticker).history(period=f'{int(time_frame)}y')
+    risk_free_data = yf.Ticker(ticker).history(period=f'10y')
     rf = risk_free_data['Close'].mean() / 100
 
     data = data['Adj Close']
