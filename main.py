@@ -1,10 +1,10 @@
-import numpy as np
-import pandas as pd
-import yfinance as yf
-from dateutil.relativedelta import relativedelta
-import streamlit as st
-import plotly.graph_objects as go
-from datetime import timedelta
+# import numpy as np
+# import pandas as pd
+# import yfinance as yf
+# from dateutil.relativedelta import relativedelta
+# import streamlit as st
+# import plotly.graph_objects as go
+# from datetime import timedelta
 
 
 import numpy as np
@@ -39,7 +39,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
 
     # Data treatment
     ticker = '^TNX'
-    risk_free_data = yf.Ticker(ticker).history(period=f'10y')
+    risk_free_data = yf.Ticker(ticker).history(period=f'{int(time_frame)}y')
     rf = risk_free_data['Close'].mean() / 100
 
     data = data['Adj Close']
@@ -81,9 +81,6 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     stock_cov_inv.columns = stock_cov.columns
     e_ = [1] * len(stock_cov.columns)
     r_ = list(df_statistics.loc['Expected Return (CAPM)'])
-    r_ = np.array(r_)  # Convert list to NumPy array
-# If you want it as a row vector (shape (1, 5)):
-    r_ = r_.reshape(1, -1)
     h_ = np.matmul(e_, stock_cov_inv)
     g_ = np.matmul(r_, stock_cov_inv)
     alpha = np.matmul(e_, h_.T)
