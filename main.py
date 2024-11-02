@@ -68,6 +68,7 @@ def calculate_optimal_portfolio(stocks_, mkt_, sd, ed, target_return):
     stock_cov_inv.columns = stock_cov.columns
     e_ = [1] * len(stock_cov.columns)
     r_ = list(df_statistics.loc['Expected Return (CAPM)'])
+    r_ = np.array(r_).reshape(1, -1) 
     h_ = np.matmul(e_, stock_cov_inv)
     g_ = np.matmul(r_, stock_cov_inv)
     alpha = np.matmul(e_, h_.T)
